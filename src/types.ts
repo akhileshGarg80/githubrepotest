@@ -152,6 +152,32 @@ export interface GitHubTreeItem {
   ignored?: boolean;
 }
 
+export interface GitHubUserProfile {
+  login: string;
+  name: string;
+  avatar_url?: string;
+  html_url?: string;
+  public_repos?: number;
+  total_private_repos?: number;
+  owned_private_repos?: number;
+  bio?: string;
+}
+
+export interface CommitPushResult {
+  success: boolean;
+  commit?: {
+    sha: string;
+    message: string;
+    html_url?: string;
+  };
+  content?: {
+    sha: string;
+    path: string;
+  };
+  message?: string;
+  error?: string;
+}
+
 export interface ActiveFile {
   path: string;
   name: string;
@@ -159,6 +185,7 @@ export interface ActiveFile {
   size: number;
   language: string;
   isModified?: boolean;
+  sha?: string;
 }
 
 export interface GeneratedDocs {

@@ -17,8 +17,10 @@ import {
   Globe,
   Sun,
   Moon,
+  UploadCloud,
+  User,
 } from 'lucide-react';
-import { FIXED_MODEL, GeminiModelOption } from '../types';
+import { FIXED_MODEL, GeminiModelOption, GitHubUserProfile } from '../types';
 
 interface HeaderProps {
   hasCustomKey: boolean;
@@ -49,6 +51,10 @@ interface HeaderProps {
   selectedModel?: GeminiModelOption;
   selectedRepoName?: string | null;
   onOpenCloneModal?: () => void;
+  onOpenSyncModal?: () => void;
+  isModified?: boolean;
+  onOpenSelfModal?: () => void;
+  selfProfile?: GitHubUserProfile | null;
 }
 
 export function Header({
@@ -80,6 +86,10 @@ export function Header({
   selectedModel,
   selectedRepoName,
   onOpenCloneModal,
+  onOpenSyncModal,
+  isModified,
+  onOpenSelfModal,
+  selfProfile,
 }: HeaderProps) {
   const activeModel = selectedModel || FIXED_MODEL;
   return (
@@ -217,6 +227,55 @@ export function Header({
               <Moon className="w-3.5 h-3.5 text-indigo-400" />
             )}
           </button>
+
+          {/* Self Account Button in Header */}
+          {onOpenSelfModal && (
+            <button
+              id="top-nav-self-account-btn"
+              type="button"
+              onClick={onOpenSelfModal}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-xs ${
+                selfProfile
+                  ? 'bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-200 border-indigo-700/60'
+                  : hasGithubToken
+                  ? 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700'
+                  : 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border-indigo-500/40'
+              }`}
+              title="Apna GitHub Account (Self Mode) - Load personal repos and push directly"
+            >
+              {selfProfile?.avatar_url ? (
+                <img src={selfProfile.avatar_url} alt="" className="w-3.5 h-3.5 rounded-full" />
+              ) : (
+                <User className="w-3.5 h-3.5 text-indigo-400" />
+              )}
+              <span className="hidden sm:inline">
+                {selfProfile ? `@${selfProfile.login}` : 'Self'}
+              </span>
+              <span className="sm:hidden">Self</span>
+            </button>
+          )}
+
+          {/* "Sync to GitHub" (Direct Push) Button in Top Nav */}
+          {onOpenSyncModal && (
+            <button
+              id="top-nav-sync-repo-btn"
+              type="button"
+              onClick={onOpenSyncModal}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all shadow-xs active:scale-95 cursor-pointer ${
+                isModified
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/60 animate-pulse shadow-md shadow-emerald-600/30'
+                  : 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 hover:text-emerald-100 border-emerald-800/60'
+              }`}
+              title="Sync & push changes directly to GitHub repository with commit comment"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline font-semibold">Sync to GitHub</span>
+              <span className="sm:hidden">Sync</span>
+              {isModified && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-ping"></span>
+              )}
+            </button>
+          )}
 
           {/* "Clone to My GitHub" Button in Top Nav */}
           {onOpenCloneModal && (

@@ -103,6 +103,115 @@ async function startServer() {
     return headers;
   }
 
+  // GitHub Authenticated User profile endpoint
+  app.get("/api/github/user", async (req, res) => {
+    try {
+      const token = ((req.headers["x-github-token"] as string) || (req.query.token as string))?.trim();
+      if (!token) {
+        return res.status(401).json({ error: "GitHub Personal Access Token required hai." });
+      }
+
+      const ghRes = await fetch("https://api.github.com/user", {
+        headers: getGitHubHeaders(token),
+      });
+
+      if (!ghRes.ok) {
+        const errJson = await ghRes.json().catch(() => ({}));
+        return res.status(ghRes.status).json({
+          error: errJson.message || `GitHub authentication error: ${ghRes.statusText}`,
+        });
+      }
+
+      const userData = await ghRes.json();
+      res.json({
+        login: userData.login,
+        name: userData.name || userData.login,
+        avatar_url: userData.avatar_url,
+        html_url: userData.html_url,
+        public_repos: userData.public_repos,
+        total_private_repos: userData.total_private_repos,
+        owned_private_repos: userData.owned_private_repos,
+        bio: userData.bio,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to fetch user profile." });
+    }
+  });
+
+  // GitHub Direct Commit & Push endpoint
+  app.post("/api/github/commit-file", async (req, res) => {
+    try {
+      const { owner, repo, path: filePath, content, message, branch, sha } = req.body;
+      const token = ((req.headers["x-github-token"] as string) || (req.body.token as string))?.trim();
+
+      if (!token) {
+        return res.status(401).json({ error: "GitHub Personal Access Token is required to commit and push changes." });
+      }
+
+      if (!owner || !repo || !filePath) {
+        return res.status(400).json({ error: "Owner, repo, and file path are required." });
+      }
+
+      const commitMessage = (message || `Update ${filePath}`).trim();
+      const targetBranch = (branch || "main").trim();
+
+      // If SHA not provided, attempt to fetch current file SHA from GitHub
+      let fileSha = sha;
+      if (!fileSha) {
+        try {
+          const checkRes = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}?ref=${encodeURIComponent(targetBranch)}`,
+            { headers: getGitHubHeaders(token) }
+          );
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            if (checkData.sha) {
+              fileSha = checkData.sha;
+            }
+          }
+        } catch {
+          // New file creation or branch default
+        }
+      }
+
+      const putBody: any = {
+        message: commitMessage,
+        content: Buffer.from(content || "", "utf-8").toString("base64"),
+        branch: targetBranch,
+      };
+
+      if (fileSha) {
+        putBody.sha = fileSha;
+      }
+
+      const putRes = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath).replace(/%2F/g, "/")}`,
+        {
+          method: "PUT",
+          headers: getGitHubHeaders(token),
+          body: JSON.stringify(putBody),
+        }
+      );
+
+      if (!putRes.ok) {
+        const errJson = await putRes.json().catch(() => ({}));
+        return res.status(putRes.status).json({
+          error: errJson.message || `Failed to commit to GitHub: ${putRes.statusText}`,
+        });
+      }
+
+      const result = await putRes.json();
+      res.json({
+        success: true,
+        commit: result.commit,
+        content: result.content,
+        message: `Successfully pushed commit to ${owner}/${repo} (${targetBranch})`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to commit and push file to GitHub." });
+    }
+  });
+
   // GitHub Repos list endpoint (Supports pagination & "all" repos load)
   app.get("/api/github/repos", async (req, res) => {
     try {

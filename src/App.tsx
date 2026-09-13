@@ -10,6 +10,8 @@ import { ConfirmDeleteModal } from './components/ConfirmDeleteModal';
 import { CloneRepoModal } from './components/CloneRepoModal';
 import { LiveDeploymentsDrawer } from './components/LiveDeploymentsDrawer';
 import { TokenSidebar } from './components/TokenSidebar';
+import { SyncCommitModal } from './components/SyncCommitModal';
+import { SelfAccountModal } from './components/SelfAccountModal';
 import {
   ChatMessage,
   GitHubRepo,
@@ -23,6 +25,7 @@ import {
   GEMINI_MODELS,
   DEFAULT_GEMINI_MODEL,
   GeminiModelOption,
+  GitHubUserProfile,
 } from './types';
 import { calculateByteSize, formatByteSize, estimateTokens, getPayloadAnalytics } from './utils/tokenCalc';
 import { isPathIgnored } from './utils/gitignore';
@@ -32,6 +35,7 @@ import {
   fetchRepoTree,
   fetchRepoFile,
   streamGeminiChat,
+  fetchAuthenticatedUser,
 } from './services/apiClient';
 import { runAutoRepoAnalysis } from './services/repoAnalysisService';
 
@@ -48,6 +52,9 @@ export default function App() {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [isCloneModalOpen, setIsCloneModalOpen] = useState<boolean>(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
+  const [isSelfModalOpen, setIsSelfModalOpen] = useState<boolean>(false);
+  const [selfProfile, setSelfProfile] = useState<GitHubUserProfile | null>(null);
 
   // Layout View States
   const [isRepoSidebarOpen, setIsRepoSidebarOpen] = useState<boolean>(true);
@@ -216,6 +223,36 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEY_GITHUB_TOKEN);
     }
     showToast('GitHub Token updated');
+  };
+
+  // Automatically load self profile if GitHub Token is present
+  useEffect(() => {
+    if (githubToken && githubToken.trim()) {
+      fetchAuthenticatedUser(githubToken.trim())
+        .then((profile) => {
+          setSelfProfile(profile);
+        })
+        .catch(() => {
+          // Token might not have user scope or be expired
+        });
+    } else {
+      setSelfProfile(null);
+    }
+  }, [githubToken]);
+
+  const handleSelectSelfAccount = (selfUser: string, profile: GitHubUserProfile) => {
+    setSelfProfile(profile);
+    setUsername(selfUser);
+    localStorage.setItem(STORAGE_KEY_GITHUB_USER, selfUser);
+    handleFetchRepos(selfUser, 'all');
+    showToast(`Logged in as @${selfUser}. Loaded all your repositories.`);
+  };
+
+  const handleSyncSuccess = (commitSha: string, _commitMsg: string, updatedSha?: string) => {
+    if (activeFile) {
+      setActiveFile((prev) => (prev ? { ...prev, isModified: false, sha: updatedSha || prev.sha } : null));
+    }
+    showToast(`Committed & pushed: ${commitSha.slice(0, 7)}`);
   };
 
   // Fetch user repositories (supports loading all repositories)
@@ -740,6 +777,10 @@ export default function App() {
         selectedModel={selectedChatModel}
         selectedRepoName={selectedRepo?.full_name}
         onOpenCloneModal={() => setIsCloneModalOpen(true)}
+        onOpenSyncModal={() => setIsSyncModalOpen(true)}
+        isModified={Boolean(activeFile?.isModified)}
+        onOpenSelfModal={() => setIsSelfModalOpen(true)}
+        selfProfile={selfProfile}
       />
 
       {/* 5-Pane Workspace Layout with GitHub Live Activity Panel & Code Workspace Toggle */}
@@ -756,6 +797,9 @@ export default function App() {
           isOpen={isRepoSidebarOpen}
           onToggle={() => setIsRepoSidebarOpen(false)}
           error={repoError}
+          onOpenSelfModal={() => setIsSelfModalOpen(true)}
+          selfProfile={selfProfile}
+          hasGithubToken={Boolean(githubToken && githubToken.trim())}
         />
 
         {/* Pane 2: File & Folder Tree (Adjacent Vertical Left) */}
@@ -795,6 +839,7 @@ export default function App() {
             activeCenterTab={activeCenterTab}
             onChangeCenterTab={setActiveCenterTab}
             onOpenFileInEditor={(path) => handleSelectFile(path)}
+            onOpenSyncModal={() => setIsSyncModalOpen(true)}
           />
         )}
 
@@ -879,6 +924,27 @@ export default function App() {
           setToastMessage(`Switched to cloned repository: ${newRepo.full_name}`);
           setTimeout(() => setToastMessage(null), 4000);
         }}
+      />
+
+      {/* Sync & Push Commit to GitHub Modal */}
+      <SyncCommitModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        selectedRepo={selectedRepo}
+        branch={branch}
+        activeFile={activeFile}
+        githubToken={githubToken}
+        onSaveGithubToken={handleSaveGithubToken}
+        onSyncSuccess={handleSyncSuccess}
+      />
+
+      {/* My GitHub Account (Self Mode) Modal */}
+      <SelfAccountModal
+        isOpen={isSelfModalOpen}
+        onClose={() => setIsSelfModalOpen(false)}
+        githubToken={githubToken}
+        onSaveGithubToken={handleSaveGithubToken}
+        onSelectSelfAccount={handleSelectSelfAccount}
       />
 
       {/* Confirm Delete Chat Modal */}

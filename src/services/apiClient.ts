@@ -9,6 +9,8 @@ import {
   GitHubPullRequestItem,
   GitHubIssueItem,
   CommitAiAnalysisDoc,
+  GitHubUserProfile,
+  CommitPushResult,
 } from '../types';
 import { parseGitignore, isPathIgnored } from '../utils/gitignore';
 
@@ -889,4 +891,169 @@ export async function fetchRepoDeployments(
   }
 
   return [];
+}
+
+/**
+ * Fetch the authenticated user profile using their personal access token
+ */
+export async function fetchAuthenticatedUser(token: string): Promise<GitHubUserProfile> {
+  const cleanToken = token.trim();
+  if (!cleanToken) {
+    throw new Error('GitHub Personal Access Token is required.');
+  }
+
+  // 1. Try backend proxy
+  try {
+    const res = await fetch('/api/github/user', {
+      headers: { 'x-github-token': cleanToken },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.login) {
+        return data;
+      }
+    }
+  } catch {
+    // Fallback to direct
+  }
+
+  // 2. Direct GitHub API fallback
+  const directRes = await fetch('https://api.github.com/user', {
+    headers: getGitHubHeaders(cleanToken),
+  });
+
+  if (!directRes.ok) {
+    const errJson = await directRes.json().catch(() => ({}));
+    throw new Error(errJson.message || `GitHub authentication failed (${directRes.status})`);
+  }
+
+  const userData = await directRes.json();
+  return {
+    login: userData.login,
+    name: userData.name || userData.login,
+    avatar_url: userData.avatar_url,
+    html_url: userData.html_url,
+    public_repos: userData.public_repos,
+    total_private_repos: userData.total_private_repos,
+    owned_private_repos: userData.owned_private_repos,
+    bio: userData.bio,
+  };
+}
+
+export interface CommitFileOptions {
+  owner: string;
+  repo: string;
+  path: string;
+  content: string;
+  message: string;
+  branch?: string;
+  sha?: string;
+  token?: string;
+}
+
+/**
+ * Direct Commit & Push a file to GitHub repository with commit message/comment
+ */
+export async function commitAndPushFile(options: CommitFileOptions): Promise<CommitPushResult> {
+  const cleanToken = options.token?.trim() || '';
+  if (!cleanToken) {
+    throw new Error('GitHub Personal Access Token is required to commit and push changes to repository.');
+  }
+
+  // 1. Try backend endpoint
+  try {
+    const res = await fetch('/api/github/commit-file', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-github-token': cleanToken,
+      },
+      body: JSON.stringify({
+        owner: options.owner,
+        repo: options.repo,
+        path: options.path,
+        content: options.content,
+        message: options.message,
+        branch: options.branch || 'main',
+        sha: options.sha,
+        token: cleanToken,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        commit: data.commit,
+        content: data.content,
+        message: data.message || 'Committed and pushed successfully to GitHub!',
+      };
+    } else if (res.status === 401 || res.status === 403 || res.status === 404) {
+      throw new Error(data.error || `GitHub commit error (${res.status})`);
+    }
+  } catch (err: any) {
+    if (err.message && (err.message.includes('Token') || err.message.includes('401') || err.message.includes('403'))) {
+      throw err;
+    }
+    // Continue to direct fallback
+  }
+
+  // 2. Direct GitHub REST API fallback (works on any client / edge)
+  const targetBranch = options.branch || 'main';
+  let fileSha = options.sha;
+
+  if (!fileSha) {
+    try {
+      const checkRes = await fetch(
+        `https://api.github.com/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}/contents/${encodeURIComponent(options.path)}?ref=${encodeURIComponent(targetBranch)}`,
+        { headers: getGitHubHeaders(cleanToken) }
+      );
+      if (checkRes.ok) {
+        const checkData = await checkRes.json();
+        fileSha = checkData.sha;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Encode string to UTF-8 base64 safely
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(options.content || '');
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64Content = btoa(binary);
+
+  const directPutBody: any = {
+    message: options.message,
+    content: base64Content,
+    branch: targetBranch,
+  };
+  if (fileSha) {
+    directPutBody.sha = fileSha;
+  }
+
+  const directRes = await fetch(
+    `https://api.github.com/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}/contents/${encodeURIComponent(options.path)}`,
+    {
+      method: 'PUT',
+      headers: getGitHubHeaders(cleanToken),
+      body: JSON.stringify(directPutBody),
+    }
+  );
+
+  if (!directRes.ok) {
+    const errJson = await directRes.json().catch(() => ({}));
+    throw new Error(errJson.message || `Failed to push commit (${directRes.status}): ${directRes.statusText}`);
+  }
+
+  const directData = await directRes.json();
+  return {
+    success: true,
+    commit: directData.commit,
+    content: directData.content,
+    message: `Successfully pushed commit to ${options.owner}/${options.repo} (${targetBranch})`,
+  };
 }

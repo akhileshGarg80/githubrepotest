@@ -12,6 +12,7 @@ import {
   AlignLeft,
   AlignCenter,
   WrapText,
+  UploadCloud,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -27,6 +28,7 @@ interface CodeWorkspaceProps {
   activeCenterTab: CenterTab;
   onChangeCenterTab: (tab: CenterTab) => void;
   onOpenFileInEditor?: (filePath: string) => void;
+  onOpenSyncModal?: () => void;
 }
 
 export function CodeWorkspace({
@@ -36,6 +38,7 @@ export function CodeWorkspace({
   onAskGeminiAboutFile,
   activeCenterTab,
   onChangeCenterTab,
+  onOpenSyncModal,
 }: CodeWorkspaceProps) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [codeDisplayMode, setCodeDisplayMode] = useState<'syntax' | 'edit'>('syntax');
@@ -229,6 +232,20 @@ export function CodeWorkspace({
                 >
                   <Save className="w-3 h-3" />
                   <span>Save</span>
+                </button>
+              )}
+
+              {/* Direct Sync / Push to GitHub Button */}
+              {onOpenSyncModal && (
+                <button
+                  id="code-editor-sync-btn"
+                  type="button"
+                  onClick={onOpenSyncModal}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-emerald-100 border border-emerald-500/40 text-[11px] font-semibold transition-colors shadow-xs cursor-pointer ml-1"
+                  title="Sync & push this file directly to GitHub with a commit comment"
+                >
+                  <UploadCloud className="w-3 h-3 text-emerald-400" />
+                  <span>Sync</span>
                 </button>
               )}
 
