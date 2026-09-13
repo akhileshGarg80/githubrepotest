@@ -1,0 +1,6 @@
+{
+  "name": "Gemini Chat",
+  "description": "Interactive AI IDE and code workspace powered by Gemini 3.5, 3.7, and 3.8 with multi-file AI chat context, VS Code syntax highlighting, GitHub live activity panel, and real-time token tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
